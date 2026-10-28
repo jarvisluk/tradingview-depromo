@@ -67,7 +67,7 @@ Patches applied (each must match EXACTLY once, else abort):
         free/anonymous data streams after a few minutes (socket stays
         ESTABLISHED, server just stops sending, even app-level pings stop).
         Hooks WebSocket, tracks last inbound frame on data-streamer sockets,
-        closes a 20s-silent socket so the site's own reconnect logic
+        closes a 15s-silent socket so the site's own reconnect logic
         rebuilds the stream; falls back to a rate-limited page reload if
         the site fails to reconnect within 25s.
 
@@ -228,10 +228,13 @@ PRELOAD_PATCHES = [
     #      ESTABLISHED but the server stops sending everything, including
     #      app-level pings -- a silent starvation the site never notices.
     #      Hook WebSocket, track last inbound frame on each data-streamer
-    #      socket (*/socket.io/websocket*), and when it goes quiet for 20s
+    #      socket (*/socket.io/websocket*), and when it goes quiet for 15s
     #      (healthy ping cadence is 5-10s) close() it so the site's own
     #      reconnect logic rebuilds the stream seamlessly. If no new socket
-    #      shows up within 90s, fall back to a rate-limited page reload.
+    #      shows up within 10s, fall back to a rate-limited page reload.
+    # p19: instant CSS suppression -- gopro-class dialogs are display:none
+    #      from the first paint (no JS latency), and the TradingView chart
+    #      watermark is hidden. Complements the JS killers above.
     Patch(
         "p13-18",
         b"localStorage.setItem(s,process.env[s]??c)})()",
@@ -242,23 +245,24 @@ PRELOAD_PATCHES = [
         b"var d=null;try{d=Object.getOwnPropertyDescriptor(window,'TradingView');}catch(e){}"
         b"if(!d){var t;try{t=s(window.TradingView);}catch(e){}"
         b"try{Object.defineProperty(window,'TradingView',{configurable:true,get:function(){return t;},set:function(v){t=s(v);}});}catch(e){}}"
-        b"var i=setInterval(function(){try{var v=window.TradingView;if(v&&typeof v.createGoProDialog==='function'&&!v.createGoProDialog.__tvp){v.createGoProDialog=function(){};v.createGoProDialog.__tvp=1;}}catch(e){}},500);"
+        b"var i=setInterval(function(){try{var v=window.TradingView;if(v&&typeof v.createGoProDialog==='function'&&!v.createGoProDialog.__tvp){v.createGoProDialog=function(){};v.createGoProDialog.__tvp=1;}}catch(e){}},200);"
         b"var TXT=['Join for free','Make every move count','Look first / Then leap','Analyze markets in TradingView Desktop','Upgrade your plan and discover the full power'];"
+        b"try{var __st=document.createElement('style');__st.textContent='div[class*=dialog]:has([class*=gopro]){display:none!important}[class*=watermark]{display:none!important}';document.documentElement.appendChild(__st);}catch(e){}"
         b"var kill=function(){try{var L=document.querySelectorAll('div[class*=dialog-]');for(var k=0;k<L.length;k++){var g=L[k];var hit=!!g.querySelector('[class*=gopro-]');if(!hit){var tx=g.innerText||'';for(var j=0;j<TXT.length;j++){if(tx.indexOf(TXT[j])>=0){hit=true;break;}}}if(!hit)continue;var top=g;while(top.parentElement&&top.parentElement!==document.body)top=top.parentElement;if(top&&top!==document.body&&top.style.display!=='none'){top.style.display='none';try{document.body.classList.remove('i-no-scroll');document.documentElement.classList.remove('i-no-scroll');}catch(e){}try{if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();}catch(e){}}}}catch(e){}};"
-        b"try{new MutationObserver(function(){setTimeout(kill,30);}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
+        b"try{new MutationObserver(function(){kill();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
         b"var killAd=function(){try{var cands=document.querySelectorAll('button,a');for(var k=0;k<cands.length;k++){if((cands[k].textContent||'').indexOf('Get my link')<0)continue;var top=cands[k];while(top.parentElement&&top.parentElement!==document.body&&top.parentElement!==document.documentElement)top=top.parentElement;if(top&&top!==document.body&&top.tagName!=='HTML'&&top.tagName!=='BODY'&&top.style.display!=='none'){top.style.display='none';}}}catch(e){}};"
-        b"setInterval(killAd,2000);"
-        b"setInterval(kill,1000);kill();"
+        b"setInterval(killAd,1000);killAd();"
+        b"setInterval(kill,500);kill();"
         b"var __oWS=window.WebSocket;var __tv=[];var __tvN=0;var __tvMax=Date.now();"
         b"try{var __nWS=function(u,p){var ws=p===undefined?new __oWS(u):new __oWS(u,p);try{if(typeof u==='string'&&u.indexOf('/socket.io/websocket')>=0){var rec={ws:ws,last:Date.now(),closed:false};__tv.push(rec);if(__tv.length>8)__tv.shift();ws.addEventListener('message',function(){rec.last=Date.now();if(Date.now()>__tvMax)__tvMax=Date.now();});ws.addEventListener('close',function(){rec.closed=true;});__tvN++;}}catch(e){}return ws;};__nWS.prototype=__oWS.prototype;__nWS.CONNECTING=0;__nWS.OPEN=1;__nWS.CLOSING=2;__nWS.CLOSED=3;window.WebSocket=__nWS;}catch(e){}"
         b"var __tvPend=0,__tvPendN=0;"
         b"setInterval(function(){try{var now=Date.now();var live=[],i,r;"
         b"for(i=0;i<__tv.length;i++){r=__tv[i];if(!r.closed&&(r.ws.readyState===0||r.ws.readyState===1))live.push(r);}"
         b"window.__tvpDbg={live:live.length,tvN:__tvN,maxAge:Math.round(now-__tvMax)};"
-        b"if(live.length>0){for(i=0;i<live.length;i++){r=live[i];if(now-r.last>20000){try{r.ws.close();}catch(e){}r.closed=true;__tvPend=now;__tvPendN=__tvN;}}"
+        b"if(live.length>0){for(i=0;i<live.length;i++){r=live[i];if(now-r.last>15000){try{r.ws.close();}catch(e){}r.closed=true;__tvPend=now;__tvPendN=__tvN;}}"
         b"if(__tvN>__tvPendN)__tvPend=0;"
-        b"if(__tvPend&&__tvN===__tvPendN&&now-__tvPend>25000){__tvPend=0;__tvForceReload();}}"
-        b"else if(now-__tvMax>25000){__tvForceReload();}"
+        b"if(__tvPend&&__tvN===__tvPendN&&now-__tvPend>10000){__tvPend=0;__tvForceReload();}}"
+        b"else if(now-__tvMax>10000){__tvForceReload();}"
         b"}catch(e){}},2000);"
         b"var __tvForceReload=function(){var n=0;try{n=parseInt(sessionStorage.getItem('__tvp_rl')||'0',10)||0;}catch(e){}if(n<100){try{sessionStorage.setItem('__tvp_rl',String(n+1));}catch(e){}location.reload();}};"
         b'}catch(e){}})()")'
