@@ -1,12 +1,22 @@
 # tradingview-depromo
 
-A one-shot patcher for **TradingView Desktop** (macOS, Electron) that
-suppresses the promo / upsell / paywall *prompts* sprinkled through the
-desktop shell and its embedded web tabs.
+A patcher for **TradingView Desktop** (macOS, Electron) that suppresses the
+promo / upsell / paywall *prompts* sprinkled through the desktop shell and
+its embedded web tabs.
 
-It patches a **copy** of the app — your original `/Applications/TradingView.app`
-is never touched, and the patched copy runs side-by-side with it
-(separate `userData`, separate single-instance lock).
+By default it patches the **installed app in place**:
+
+1. quits `/Applications/TradingView.app` if it is running
+2. patches it directly (idempotent: pristine `*.orig` backups inside the
+   bundle are restored before every run)
+3. relaunches it when done
+
+Because it works in place, the patched client is indistinguishable from the
+stock one everywhere that matters: same path, same name/icon, same bundle id,
+and — since the userData-isolation patches are skipped in this mode — the same
+`~/Library/Application Support/TradingView` data (settings, layouts, login
+session). The only tell is the ad-hoc code signature, which macOS requires
+after a bundle is modified.
 
 > **Disclaimer** — This project modifies the TradingView Desktop client, which
 > likely violates the [TradingView Terms of Service](https://www.tradingview.com/terms/).
@@ -26,15 +36,19 @@ aborts loudly if a pattern drifts (i.e. after an app update).
 
 `index.js` (main process):
 
-| # | Patch |
-|---|-------|
-| p1 | feature-requester predicate → always allow (no `createGoProDialog` injection on tab detach / multi-window) |
-| p1b | `requestProFeature()` → no-op |
-| p2 | `showAppOnboardingDialog()` → no-op (welcome screen gone) |
-| p3 | `TrackEventService.sendEvent()` → immediate return (shell analytics events) |
-| p10 | isolated `userData` → `~/Library/Application Support/TradingView-patched` |
-| p11 | first-run auto sign-in prompt bypassed |
-| p12 | file logger follows the isolated `userData` dir |
+| # | Patch | Mode |
+|---|-------|------|
+| p1 | feature-requester predicate → always allow (no `createGoProDialog` injection on tab detach / multi-window) | both |
+| p1b | `requestProFeature()` → no-op | both |
+| p2 | `showAppOnboardingDialog()` → no-op (welcome screen gone) | both |
+| p3 | `TrackEventService.sendEvent()` → immediate return (shell analytics events) | both |
+| p11 | first-run auto sign-in prompt bypassed | both |
+| p10 | isolated `userData` → `~/Library/Application Support/TradingView-patched` | copy only |
+| p12 | file logger follows the isolated `userData` dir | copy only |
+
+p10/p12 are skipped in the default in-place mode on purpose: keeping the
+stock `userData` is what preserves your settings, layouts and login session,
+and is part of looking like the original client.
 
 `app/new-tab/bundle.js`:
 
@@ -75,33 +89,50 @@ aborts loudly if a pattern drifts (i.e. after an app update).
 ## Usage
 
 ```bash
-python3 scripts/patch-tradingview.py            # default: /Applications/TradingView.app -> ./targets/TradingView-patched.app
-python3 scripts/patch-tradingview.py --src /path/to/TradingView.app --dst /path/to/out.app
+# double-click this in Finder, or run it from a terminal:
+scripts/patch-tradingview.command
+
+# same thing, spelled out:
+python3 scripts/patch-tradingview.py                     # in-place on /Applications/TradingView.app
+python3 scripts/patch-tradingview.py --no-restart        # patch but don't quit/relaunch
+python3 scripts/patch-tradingview.py --src /path/to/TradingView.app
+python3 scripts/patch-tradingview.py --dst /path/to/out.app   # legacy: patch a copy instead
 ```
 
-Then launch:
+Double-clicking works because the wrapper is a `.command` file — Finder runs
+those in Terminal directly (a bare `.sh` usually just opens in a text editor).
 
-```bash
-open -n targets/TradingView-patched.app
-```
+The script is safe to re-run at any time. It restores the pristine
+`app.asar.orig` / `Info.plist.orig` snapshots stored inside the bundle before
+each run, so re-patching never stacks patches. **Uninstall** = delete those
+two `.orig` files after restoring them (or just reinstall the app).
 
-Each run starts from a fresh copy of the source app, so it is safe to re-run
-after a TradingView update — as long as the bundled JS still matches the patch
-patterns. On mismatch the script tells you which pattern drifted.
+Notes:
+
+- A TradingView **auto-update overwrites the patch**; just run the script
+  again after an update (the patch patterns abort loudly if the build changed).
+- Because the bundle signature changes to ad-hoc, macOS may ask **once** to
+  re-grant keychain access (the app stores credentials via keytar).
+- In copy mode (`--dst`) the patched copy uses a separate `userData` dir and
+  single-instance lock, so it can run side-by-side with the original.
 
 ## How it works
 
-1. Copies the app bundle to `targets/TradingView-patched.app`
+1. (in-place) quits the running app — graceful `osascript` quit first,
+   `SIGTERM`/`SIGKILL` as fallback — and snapshots/restores the pristine
+   `*.orig` backups
 2. Rewrites `Contents/Resources/app.asar` in place (pickle-layout aware,
    keeps `unpacked` entries intact) applying the patches above
 3. Verifies every patched needle is present/absent as expected
 4. Removes the `ElectronAsarIntegrity` declaration from `Info.plist`
 5. Ad-hoc re-signs the bundle so macOS will launch it
+6. (in-place) relaunches the app with a plain `open`
 
 ## Repository layout
 
 ```
-scripts/patch-tradingview.py   # the patcher
+scripts/patch-tradingview.py       # the patcher
+scripts/patch-tradingview.command  # double-click wrapper
 ```
 
 Build output and analysis artifacts land in `targets/` (git-ignored, never
