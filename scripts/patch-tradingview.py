@@ -67,9 +67,9 @@ Patches applied (each must match EXACTLY once, else abort):
         free/anonymous data streams after a few minutes (socket stays
         ESTABLISHED, server just stops sending, even app-level pings stop).
         Hooks WebSocket, tracks last inbound frame on data-streamer sockets,
-        closes a 45s-silent socket so the site's own reconnect logic
+        closes a 20s-silent socket so the site's own reconnect logic
         rebuilds the stream; falls back to a rate-limited page reload if
-        the site fails to reconnect within 90s.
+        the site fails to reconnect within 25s.
 
 Note: server-side enforcement (layout limits, plan quotas, web ads highly
 gated by the account) is NOT changed; client prompts only.
@@ -228,7 +228,7 @@ PRELOAD_PATCHES = [
     #      ESTABLISHED but the server stops sending everything, including
     #      app-level pings -- a silent starvation the site never notices.
     #      Hook WebSocket, track last inbound frame on each data-streamer
-    #      socket (*/socket.io/websocket*), and when it goes quiet for 45s
+    #      socket (*/socket.io/websocket*), and when it goes quiet for 20s
     #      (healthy ping cadence is 5-10s) close() it so the site's own
     #      reconnect logic rebuilds the stream seamlessly. If no new socket
     #      shows up within 90s, fall back to a rate-limited page reload.
@@ -249,13 +249,18 @@ PRELOAD_PATCHES = [
         b"var killAd=function(){try{var cands=document.querySelectorAll('button,a');for(var k=0;k<cands.length;k++){if((cands[k].textContent||'').indexOf('Get my link')<0)continue;var top=cands[k];while(top.parentElement&&top.parentElement!==document.body&&top.parentElement!==document.documentElement)top=top.parentElement;if(top&&top!==document.body&&top.tagName!=='HTML'&&top.tagName!=='BODY'&&top.style.display!=='none'){top.style.display='none';}}}catch(e){}};"
         b"setInterval(killAd,2000);"
         b"setInterval(kill,1000);kill();"
-        b"var __oWS=window.WebSocket;var __tv=[];var __tvN=0;"
-        b"try{var __nWS=function(u,p){var ws=p===undefined?new __oWS(u):new __oWS(u,p);try{if(typeof u==='string'&&u.indexOf('/socket.io/websocket')>=0){var rec={ws:ws,last:Date.now(),closed:false};__tv.push(rec);if(__tv.length>8)__tv.shift();ws.addEventListener('message',function(){rec.last=Date.now();});ws.addEventListener('close',function(){rec.closed=true;});__tvN++;}}catch(e){}return ws;};__nWS.prototype=__oWS.prototype;__nWS.CONNECTING=0;__nWS.OPEN=1;__nWS.CLOSING=2;__nWS.CLOSED=3;window.WebSocket=__nWS;}catch(e){}"
+        b"var __oWS=window.WebSocket;var __tv=[];var __tvN=0;var __tvMax=Date.now();"
+        b"try{var __nWS=function(u,p){var ws=p===undefined?new __oWS(u):new __oWS(u,p);try{if(typeof u==='string'&&u.indexOf('/socket.io/websocket')>=0){var rec={ws:ws,last:Date.now(),closed:false};__tv.push(rec);if(__tv.length>8)__tv.shift();ws.addEventListener('message',function(){rec.last=Date.now();if(Date.now()>__tvMax)__tvMax=Date.now();});ws.addEventListener('close',function(){rec.closed=true;});__tvN++;}}catch(e){}return ws;};__nWS.prototype=__oWS.prototype;__nWS.CONNECTING=0;__nWS.OPEN=1;__nWS.CLOSING=2;__nWS.CLOSED=3;window.WebSocket=__nWS;}catch(e){}"
         b"var __tvPend=0,__tvPendN=0;"
-        b"setInterval(function(){try{var now=Date.now();for(var i=0;i<__tv.length;i++){var r=__tv[i];if(r.closed)continue;if(r.ws.readyState===1&&now-r.last>45000){try{r.ws.close();}catch(e){}r.closed=true;__tvPend=now;__tvPendN=__tvN;}}"
+        b"setInterval(function(){try{var now=Date.now();var live=[],i,r;"
+        b"for(i=0;i<__tv.length;i++){r=__tv[i];if(!r.closed&&(r.ws.readyState===0||r.ws.readyState===1))live.push(r);}"
+        b"window.__tvpDbg={live:live.length,tvN:__tvN,maxAge:Math.round(now-__tvMax)};"
+        b"if(live.length>0){for(i=0;i<live.length;i++){r=live[i];if(now-r.last>20000){try{r.ws.close();}catch(e){}r.closed=true;__tvPend=now;__tvPendN=__tvN;}}"
         b"if(__tvN>__tvPendN)__tvPend=0;"
-        b"if(__tvPend&&__tvN===__tvPendN&&now-__tvPend>90000){__tvPend=0;var n=0;try{n=parseInt(sessionStorage.getItem('__tvp_rl')||'0',10)||0;}catch(e){}if(n<100){try{sessionStorage.setItem('__tvp_rl',String(n+1));}catch(e){}location.reload();}}"
-        b"}catch(e){}},10000);"
+        b"if(__tvPend&&__tvN===__tvPendN&&now-__tvPend>25000){__tvPend=0;__tvForceReload();}}"
+        b"else if(now-__tvMax>25000){__tvForceReload();}"
+        b"}catch(e){}},2000);"
+        b"var __tvForceReload=function(){var n=0;try{n=parseInt(sessionStorage.getItem('__tvp_rl')||'0',10)||0;}catch(e){}if(n<100){try{sessionStorage.setItem('__tvp_rl',String(n+1));}catch(e){}location.reload();}};"
         b'}catch(e){}})()")'
         b"}catch(_e){}})()",
     ),

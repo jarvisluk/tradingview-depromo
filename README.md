@@ -80,7 +80,7 @@ and is part of looking like the original client.
 | p13 | stub `window.TradingView.createGoProDialog` in the page's main world ("Analyze markets in TradingView Desktop" / `manyDesktopWindows` upsell) | both |
 | p14 | DOM-level killer for site-internal paywall/gopro dialogs ("Join for free" gate and the signed-in desktop upsell — both render via `openWall`), un-locks body scroll | both |
 | p15 | hide the "Invite friends. Earn cash" bottom-left banner (best-effort, matched by copy) | both |
-| p18 | streamer watchdog: `close()` a data socket silent for 45s so the site reconnects; rate-limited reload fallback | both |
+| p18 | streamer watchdog: `close()` a data socket silent for 20s so the site reconnects; rate-limited reload fallback | both |
 | p18 | streamer watchdog: hook `WebSocket`, track last inbound frame on data-streamer sockets, `close()` a socket that has been silent for 45s (healthy ping cadence is 5-10s) so the site's own reconnect logic rebuilds the stream; rate-limited `location.reload()` fallback if the site fails to reconnect within 90s |
 
 ## Free-plan data stalls (and what p18 does about it)
