@@ -30,6 +30,13 @@ Patches applied (each must match EXACTLY once, else abort):
     p3  TrackEventService.sendEvent() -> immediate return (shell GA events)
     p11 first-run auto sign-in prompt ("welcome" dialog, closable:false)
         bypassed p2 via doSignIn("first_sign") -> signIn -> showWelcomeDialog
+    p16 web-tab windows always get backgroundThrottling:false (stock code
+        gates it on the server-side feature flag tvd_background_throttling;
+        when the flag is on, a backgrounded/occluded window gets timer-
+        throttled, the site's streamer keepalive starves and the data feed
+        silently stops after a few minutes). Also appends the Chromium
+        switch disable-backgrounding-occluded-windows so fully covered
+        windows on macOS keep rendering (rAF stays alive).
     p10 (copy mode only) isolate userData ->
         ~/Library/Application Support/TradingView-patched
     p12 (copy mode only) file logger follows the isolated userData dir
@@ -56,6 +63,13 @@ Patches applied (each must match EXACTLY once, else abort):
     p15 web pages: hide the "Invite friends. Earn cash" bottom-left AD
         banner (matched by its 'Get my link' button + 'Invite friends'
         copy; best-effort).
+    p18 web pages: streamer watchdog. TradingView's servers silently cut
+        free/anonymous data streams after a few minutes (socket stays
+        ESTABLISHED, server just stops sending, even app-level pings stop).
+        Hooks WebSocket, tracks last inbound frame on data-streamer sockets,
+        closes a 45s-silent socket so the site's own reconnect logic
+        rebuilds the stream; falls back to a rate-limited page reload if
+        the site fails to reconnect within 90s.
 
 Note: server-side enforcement (layout limits, plan quotas, web ads highly
 gated by the account) is NOT changed; client prompts only.
@@ -131,6 +145,24 @@ INDEX_JS_COMMON = [
         b'(0,xt.Dv)().doSignIn("first_sign")',
         b"void 0",
     ),
+    # p16: web-tab windows must never run with background throttling.
+    #      bt() only sets backgroundThrottling:false when the server-side
+    #      feature flag tvd_background_throttling (resolved by asking the
+    #      SITE: window.TradingView.isFeatureEnabled) is false. On fresh
+    #      profiles or after a flag flip the throttle stays ON: an occluded
+    #      or hidden window gets its timers clamped (Chromium Intensive Wake
+    #      Up Throttling after ~5 min), the site's streamer keepalive
+    #      starves and the server silently stops pushing chart data.
+    #      TV's own renderer-worker / toast windows already hardcode false.
+    #      The appended Chromium switch also stops macOS from pausing
+    #      rAF/painting for windows fully covered by other windows.
+    Patch(
+        "p16",
+        b"const r=ht().isFeatureEnabled(pt,!1);return(0,M.iT)()||r||(n.webPreferences.backgroundThrottling=!1),",
+        b"const r=ht().isFeatureEnabled(pt,!1);"
+        b'try{require("electron").app.commandLine.appendSwitch("disable-backgrounding-occluded-windows")}catch(_e){}'
+        b"return n.webPreferences.backgroundThrottling=!1,",
+    ),
 ]
 
 # Copy-mode only: a patched *copy* must not share state with the original app.
@@ -190,8 +222,18 @@ PRELOAD_PATCHES = [
     #      class (or the known upsell copy), un-lock body scroll.
     # p15: hide the "Invite friends. Earn cash" bottom-left banner
     #      (best-effort, matched by copy).
+    # p18: streamer watchdog. TradingView's servers cut free/anonymous data
+    #      streams after a few minutes (observed ~5 min after page load,
+    #      signed-in or not, foreground or background): the socket stays
+    #      ESTABLISHED but the server stops sending everything, including
+    #      app-level pings -- a silent starvation the site never notices.
+    #      Hook WebSocket, track last inbound frame on each data-streamer
+    #      socket (*/socket.io/websocket*), and when it goes quiet for 45s
+    #      (healthy ping cadence is 5-10s) close() it so the site's own
+    #      reconnect logic rebuilds the stream seamlessly. If no new socket
+    #      shows up within 90s, fall back to a rate-limited page reload.
     Patch(
-        "p13-15",
+        "p13-18",
         b"localStorage.setItem(s,process.env[s]??c)})()",
         b"localStorage.setItem(s,process.env[s]??c);"
         b'try{e.webFrame.executeJavaScript('
@@ -207,6 +249,13 @@ PRELOAD_PATCHES = [
         b"var killAd=function(){try{var cands=document.querySelectorAll('button,a');for(var k=0;k<cands.length;k++){if((cands[k].textContent||'').indexOf('Get my link')<0)continue;var top=cands[k];while(top.parentElement&&top.parentElement!==document.body&&top.parentElement!==document.documentElement)top=top.parentElement;if(top&&top!==document.body&&top.tagName!=='HTML'&&top.tagName!=='BODY'&&top.style.display!=='none'){top.style.display='none';}}}catch(e){}};"
         b"setInterval(killAd,2000);"
         b"setInterval(kill,1000);kill();"
+        b"var __oWS=window.WebSocket;var __tv=[];var __tvN=0;"
+        b"try{var __nWS=function(u,p){var ws=p===undefined?new __oWS(u):new __oWS(u,p);try{if(typeof u==='string'&&u.indexOf('/socket.io/websocket')>=0){var rec={ws:ws,last:Date.now(),closed:false};__tv.push(rec);if(__tv.length>8)__tv.shift();ws.addEventListener('message',function(){rec.last=Date.now();});ws.addEventListener('close',function(){rec.closed=true;});__tvN++;}}catch(e){}return ws;};__nWS.prototype=__oWS.prototype;__nWS.CONNECTING=0;__nWS.OPEN=1;__nWS.CLOSING=2;__nWS.CLOSED=3;window.WebSocket=__nWS;}catch(e){}"
+        b"var __tvPend=0,__tvPendN=0;"
+        b"setInterval(function(){try{var now=Date.now();for(var i=0;i<__tv.length;i++){var r=__tv[i];if(r.closed)continue;if(r.ws.readyState===1&&now-r.last>45000){try{r.ws.close();}catch(e){}r.closed=true;__tvPend=now;__tvPendN=__tvN;}}"
+        b"if(__tvN>__tvPendN)__tvPend=0;"
+        b"if(__tvPend&&__tvN===__tvPendN&&now-__tvPend>90000){__tvPend=0;var n=0;try{n=parseInt(sessionStorage.getItem('__tvp_rl')||'0',10)||0;}catch(e){}if(n<100){try{sessionStorage.setItem('__tvp_rl',String(n+1));}catch(e){}location.reload();}}"
+        b"}catch(e){}},10000);"
         b'}catch(e){}})()")'
         b"}catch(_e){}})()",
     ),
@@ -518,6 +567,9 @@ def patch_app(app: Path, isolate: bool) -> None:
         (b"showAppOnboardingDialog(e,t){}", 1, True),
         (b"async sendEvent(e){return void 0;", 1, True),
         (b'(0,xt.Dv)().doSignIn("first_sign")', 0, False),
+        (b"return n.webPreferences.backgroundThrottling=!1,", 1, True),
+        (b"(0,M.iT)()||r||(n.webPreferences.backgroundThrottling=!1)", 0, False),
+        (b"disable-backgrounding-occluded-windows", 1, True),
     ]
     if isolate:
         index_checks += [
@@ -542,6 +594,8 @@ def patch_app(app: Path, isolate: bool) -> None:
             (b"webFrame.executeJavaScript", 1, True),
             (b"createGoProDialog=function(){}", 2, True),
             (b"i-no-scroll", 2, True),
+            (b"window.WebSocket=__nWS", 1, True),
+            (b"__tvp_rl", 2, True),
         ],
     }
     for logical, checks in patched_check.items():
@@ -587,6 +641,16 @@ def main() -> None:
             shutil.rmtree(dst)
         shutil.copytree(src, dst, symlinks=True)
         subprocess.run(["xattr", "-cr", str(dst)], check=False, capture_output=True)
+        # If the source bundle is already patched in place, fall back to its
+        # pristine *.orig backups so the patch table can match again.
+        asar = dst / "Contents/Resources/app.asar"
+        asar_orig = src / "Contents/Resources/app.asar.orig"
+        if asar_orig.exists() and PATCHED_NEEDLE in asar.read_bytes():
+            print("  source is already patched -- using its pristine *.orig backups")
+            shutil.copy2(asar_orig, asar)
+            plist_orig = src / "Contents/Info.plist.orig"
+            if plist_orig.exists():
+                shutil.copy2(plist_orig, dst / "Contents/Info.plist")
         target = dst
 
     patch_app(target, isolate=not in_place)

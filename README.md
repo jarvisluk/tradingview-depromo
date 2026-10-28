@@ -42,6 +42,7 @@ aborts loudly if a pattern drifts (i.e. after an app update).
 | p1b | `requestProFeature()` → no-op | both |
 | p2 | `showAppOnboardingDialog()` → no-op (welcome screen gone) | both |
 | p3 | `TrackEventService.sendEvent()` → immediate return (shell analytics events) | both |
+| p16 | web-tab windows always get `backgroundThrottling:false` (stock code gates it on a server-side feature flag) + `disable-backgrounding-occluded-windows` switch | both |
 | p11 | first-run auto sign-in prompt bypassed | both |
 | p10 | isolated `userData` → `~/Library/Application Support/TradingView-patched` | copy only |
 | p12 | file logger follows the isolated `userData` dir | copy only |
@@ -74,11 +75,35 @@ and is part of looking like the original client.
 `preload/target-tvd-host-preload.js` (injected into web tabs via
 `webFrame.executeJavaScript`, since web tabs run `contextIsolation:true`):
 
-| # | Patch |
-|---|-------|
-| p13 | stub `window.TradingView.createGoProDialog` in the page's main world ("Analyze markets in TradingView Desktop" / `manyDesktopWindows` upsell) |
-| p14 | DOM-level killer for site-internal paywall/gopro dialogs ("Join for free" gate and the signed-in desktop upsell — both render via `openWall`), un-locks body scroll |
-| p15 | hide the "Invite friends. Earn cash" bottom-left banner (best-effort, matched by copy) |
+| # | Patch | Mode |
+|---|-------|------|
+| p13 | stub `window.TradingView.createGoProDialog` in the page's main world ("Analyze markets in TradingView Desktop" / `manyDesktopWindows` upsell) | both |
+| p14 | DOM-level killer for site-internal paywall/gopro dialogs ("Join for free" gate and the signed-in desktop upsell — both render via `openWall`), un-locks body scroll | both |
+| p15 | hide the "Invite friends. Earn cash" bottom-left banner (best-effort, matched by copy) | both |
+| p18 | streamer watchdog: `close()` a data socket silent for 45s so the site reconnects; rate-limited reload fallback | both |
+| p18 | streamer watchdog: hook `WebSocket`, track last inbound frame on data-streamer sockets, `close()` a socket that has been silent for 45s (healthy ping cadence is 5-10s) so the site's own reconnect logic rebuilds the stream; rate-limited `location.reload()` fallback if the site fails to reconnect within 90s |
+
+## Free-plan data stalls (and what p18 does about it)
+
+TradingView's servers silently cut free/anonymous data streams after a few
+minutes of a session's life — observed ~5 minutes after page load, signed-in
+or not, foreground or background. The cut is one-sided: the WebSocket stays
+ESTABLISHED, the server just stops sending everything (including its own
+app-level pings), no error is raised, and the site never notices — the chart
+simply freezes. Reloading the page always restarts the stream (for another
+few minutes).
+
+Since the patches above also hide the upsell dialogs that normally appear
+around these nudge moments, a freeze would look completely silent. p18
+restores continuity without reloading: the watchdog closes the starved
+socket, the site reconnects on its own, and data resumes within seconds —
+repeating for as long as the session lives.
+
+Related hardening: the desktop shell only disables Chromium background
+throttling for web-tab windows when a server-side feature flag
+(`tvd_background_throttling`) says so; p16 forces it off unconditionally and
+adds the `disable-backgrounding-occluded-windows` switch, so backgrounded or
+fully covered windows keep their timers and render loop alive.
 
 ## Requirements
 
