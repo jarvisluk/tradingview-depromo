@@ -1,0 +1,7 @@
+# Local build output and analysis artifacts — never publish TradingView binaries
+targets/*
+!targets/.gitkeep
+
+.DS_Store
+*.asar.tmp
+__pycache__/
