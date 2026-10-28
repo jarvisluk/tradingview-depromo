@@ -102,8 +102,10 @@ patterns. On mismatch the script tells you which pattern drifted.
 
 ```
 scripts/patch-tradingview.py   # the patcher
-targets/                       # local build output & analysis artifacts (git-ignored)
 ```
+
+Build output and analysis artifacts land in `targets/` (git-ignored, never
+published — it holds TradingView's proprietary binaries).
 
 ## License
 
