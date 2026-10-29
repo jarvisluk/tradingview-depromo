@@ -3,6 +3,7 @@ targets/
 
 # Local agent tooling config (machine-specific absolute paths)
 opencode.json
+.mcp.json
 
 .DS_Store
 *.asar.tmp
