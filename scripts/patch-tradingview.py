@@ -68,8 +68,16 @@ Patches applied (each must match EXACTLY once, else abort):
         ESTABLISHED, server just stops sending, even app-level pings stop).
         Hooks WebSocket, tracks last inbound frame on data-streamer sockets,
         closes a 15s-silent socket so the site's own reconnect logic
-        rebuilds the stream; falls back to a rate-limited page reload if
-        the site fails to reconnect within 25s.
+        rebuilds the stream; reload is a last resort (120s reconnect
+        grace first, then exponential backoff, max 5 per session).
+    p19 web pages: CSS injected at document start hides gopro-class
+        dialogs from the first paint; kill() also tries the dialog's
+        close button before hiding (logged-in upsell walls).
+
+    The bottom-left TradingView logo watermark (painted by the charting
+    library directly onto the chart pane canvas, no DOM) is NOT removed:
+    see the NOTE inside INDEX_JS_COMMON for why no remaining Electron
+    hook in TVD's custom build can rewrite the bundle.
 
 Note: server-side enforcement (layout limits, plan quotas, web ads highly
 gated by the account) is NOT changed; client prompts only.
@@ -163,6 +171,16 @@ INDEX_JS_COMMON = [
         b'try{require("electron").app.commandLine.appendSwitch("disable-backgrounding-occluded-windows")}catch(_e){}'
         b"return n.webPreferences.backgroundThrottling=!1,",
     ),
+    # NOTE: an attempt to strip the bottom-left TradingView logo watermark
+    #      (painted by the charting library directly onto the chart pane
+    #      canvas via _drawWatermark()) was made and abandoned. The needle
+    #      is unique and the patch itself is trivial, but TVD's custom
+    #      Electron strips session.webRequest.filterResponseData (verified:
+    #      not a function), and custom-scheme protocol proxying
+    #      (registerSchemesAsPrivileged + protocol.handle + onBeforeRequest
+    #      redirect) registers fine yet never receives any request --
+    #      renderer fetches to the custom scheme fail before reaching the
+    #      network stack. No remaining hook can rewrite response bodies.
 ]
 
 # Copy-mode only: a patched *copy* must not share state with the original app.

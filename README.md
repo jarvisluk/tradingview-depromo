@@ -80,8 +80,20 @@ and is part of looking like the original client.
 | p13 | stub `window.TradingView.createGoProDialog` in the page's main world ("Analyze markets in TradingView Desktop" / `manyDesktopWindows` upsell) | both |
 | p14 | DOM-level killer for site-internal paywall/gopro dialogs ("Join for free" gate and the signed-in desktop upsell — both render via `openWall`), un-locks body scroll | both |
 | p15 | hide the "Invite friends. Earn cash" bottom-left banner (best-effort, matched by copy) | both |
-| p18 | streamer watchdog: `close()` a data socket silent for 20s so the site reconnects; rate-limited reload fallback | both |
-| p18 | streamer watchdog: hook `WebSocket`, track last inbound frame on data-streamer sockets, `close()` a socket that has been silent for 45s (healthy ping cadence is 5-10s) so the site's own reconnect logic rebuilds the stream; rate-limited `location.reload()` fallback if the site fails to reconnect within 90s |
+| p19 | CSS hides gopro dialogs from first paint; killer also clicks the wall's close button | both |
+| p18 | streamer watchdog: `close()` a data socket silent for 15s so the site reconnects; reload is a last resort (120s grace, exponential backoff, max 5) | both |
+
+**Not included:** the canvas-painted TradingView logo watermark at the
+bottom-left of the chart cannot be removed. The drawing call
+(`_drawWatermark()` in the charting-library bundle) was located and the
+patch is trivial, but TVD's custom Electron strips
+`session.webRequest.filterResponseData`, and a custom-scheme protocol
+proxy (`registerSchemesAsPrivileged` + `protocol.handle` + an
+`onBeforeRequest` redirect) registers successfully yet never receives a
+single request — renderer fetches to the custom scheme fail before
+reaching the network stack. No remaining hook can rewrite response
+bodies. Details in the NOTE inside `scripts/patch-tradingview.py`.
+| p18 | streamer watchdog: hook `WebSocket`, track last inbound frame on data-streamer sockets, `close()` a socket silent for 15s (healthy ping cadence is 5-10s) so the site's own reconnect logic rebuilds the stream; `location.reload()` only as a last resort — 120s reconnect grace, then exponential backoff (10s/30s/90s/5m/15m), max 5 per tab session |
 
 ## Free-plan data stalls (and what p18 does about it)
 
