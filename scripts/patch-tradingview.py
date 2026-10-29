@@ -63,9 +63,9 @@ Patches applied (each must match EXACTLY once, else abort):
     p15 web pages: hide the "Invite friends. Earn cash" bottom-left AD
         banner (matched by its 'Get my link' button + 'Invite friends'
         copy; best-effort).
-    p18 web pages: streamer watchdog. TradingView's servers silently cut
-        free/anonymous data streams after a few minutes (socket stays
-        ESTABLISHED, server just stops sending, even app-level pings stop).
+    p18 web pages: streamer watchdog. A data stream can go silent while
+        the socket stays ESTABLISHED (server stops sending, even app-level
+        pings stop) and the site never notices.
         Hooks WebSocket, tracks last inbound frame on data-streamer sockets,
         closes a 15s-silent socket so the site's own reconnect logic
         rebuilds the stream; reload is a last resort (120s reconnect
@@ -247,11 +247,11 @@ PRELOAD_PATCHES = [
     #      iframe in the charting-ad toast group of #overlap-manager-root
     #      (its copy is not in the page DOM): hidden by CSS, then dismissed
     #      through the group's own close button.
-    # p18: streamer watchdog. TradingView's servers cut free/anonymous data
-    #      streams after a few minutes (observed ~5 min after page load,
-    #      signed-in or not, foreground or background): the socket stays
-    #      ESTABLISHED but the server stops sending everything, including
+    # p18: streamer watchdog. A data stream can go silent while the socket
+    #      stays ESTABLISHED: the server stops sending everything, including
     #      app-level pings -- a silent starvation the site never notices.
+    #      (The stalls traced in detail were plan connection-limit cuts,
+    #      which are left alone; see below.)
     #      Hook WebSocket, track last inbound frame on each data-streamer
     #      socket (*/socket.io/websocket*), and when it goes quiet for 15s
     #      (healthy ping cadence is 5-10s) close() it so the site's own

@@ -93,23 +93,21 @@ proxy (`registerSchemesAsPrivileged` + `protocol.handle` + an
 single request — renderer fetches to the custom scheme fail before
 reaching the network stack. No remaining hook can rewrite response
 bodies. Details in the NOTE inside `scripts/patch-tradingview.py`.
-| p18 | streamer watchdog: hook `WebSocket`, track last inbound frame on data-streamer sockets, `close()` a socket silent for 15s (healthy ping cadence is 5-10s) so the site's own reconnect logic rebuilds the stream; `location.reload()` only as a last resort — 120s reconnect grace, then exponential backoff (10s/30s/90s/5m/15m), max 5 per tab session |
 
-## Free-plan data stalls (and what p18 does about it)
+## Data stalls (and what p18 does about it)
 
-TradingView's servers silently cut free/anonymous data streams after a few
-minutes of a session's life — observed ~5 minutes after page load, signed-in
-or not, foreground or background. The cut is one-sided: the WebSocket stays
-ESTABLISHED, the server just stops sending everything (including its own
-app-level pings), no error is raised, and the site never notices — the chart
-simply freezes. Reloading the page always restarts the stream (for another
-few minutes).
+Chart data can stop arriving while the WebSocket still looks healthy: the
+connection stays ESTABLISHED, the server stops sending (including its own
+app-level pings), no error is raised, and the chart simply freezes. p18
+tracks the last inbound frame on each data-streamer socket; when one has
+been silent for 15s (healthy ping cadence is 5-10s) it closes the socket so
+the site's own reconnect logic rebuilds the stream. `location.reload()` is
+only a last resort — 120s reconnect grace, then exponential backoff
+(10s/30s/90s/5m/15m), at most 5 per tab session.
 
-Since the patches above also hide the upsell dialogs that normally appear
-around these nudge moments, a freeze would look completely silent. p18
-restores continuity without reloading: the watchdog closes the starved
-socket, the site reconnects on its own, and data resumes within seconds —
-repeating for as long as the session lives.
+The stalls that were traced in detail turned out to be the plan's
+connection limit (see below). Those are not worked around: while a
+connection-limit or multi-tab upsell dialog is up, p18 stands down.
 
 Related hardening: the desktop shell only disables Chromium background
 throttling for web-tab windows when a server-side feature flag
@@ -126,7 +124,8 @@ multi-tab upsell in the other tabs. That is a server-side limit and is not
 bypassed: the connection-limit notice stays visible (with the site's
 "Restore connection" button), p18 does not reload background tabs around
 it, and only the tab you are looking at takes the connection back (one
-reload, at most every 30s) — cutting another tab instead. Keep at most 2 chart tabs open for all of them to stay live.
+reload, at most every 30s) — cutting another tab instead. Keep at most 2
+chart tabs open for all of them to stay live.
 
 ## Requirements
 
@@ -159,8 +158,11 @@ Notes:
 
 - A TradingView **auto-update overwrites the patch**; just run the script
   again after an update (the patch patterns abort loudly if the build changed).
-- Because the bundle signature changes to ad-hoc, macOS may ask **once** to
-  re-grant keychain access (the app stores credentials via keytar).
+- The bundle is re-signed ad-hoc, and an ad-hoc signature is tied to the
+  bundle's exact contents. macOS therefore asks for your login keychain
+  password **after every (re-)patch** before the app can read its stored
+  credentials (keytar); choose "Always Allow" to stop it asking until the
+  next patch.
 - In copy mode (`--dst`) the patched copy uses a separate `userData` dir and
   single-instance lock, so it can run side-by-side with the original.
 
