@@ -253,12 +253,19 @@ PRELOAD_PATCHES = [
     # p19: instant CSS suppression -- gopro-class dialogs are display:none
     #      from the first paint (no JS latency), and the TradingView chart
     #      watermark is hidden. Complements the JS killers above.
+    # The preload is registered session-wide (defaultSession.setPreloads),
+    # so it also runs in the shell's own file:// pages (tab bar, menus,
+    # toasts). Everything above is gated to http(s) tradingview.com pages:
+    # otherwise p18 sees no streamer socket in the tab bar, "reloads" it
+    # after 120s, and the shell page comes back without its tabs (its
+    # initial state is pushed only once by the main process).
     Patch(
         "p13-18",
         b"localStorage.setItem(s,process.env[s]??c)})()",
         b"localStorage.setItem(s,process.env[s]??c);"
         b'try{e.webFrame.executeJavaScript('
         b'"(function(){try{'
+        b"if(!/^https?:$/.test(location.protocol)||!/(^|\\\\.)tradingview\\\\.com$/i.test(location.hostname))return;"
         b"var s=function(v){try{if(v&&typeof v==='object'&&typeof v.createGoProDialog==='function'){v.createGoProDialog=function(){};}}catch(e){}return v;};"
         b"var d=null;try{d=Object.getOwnPropertyDescriptor(window,'TradingView');}catch(e){}"
         b"if(!d){var t;try{t=s(window.TradingView);}catch(e){}"
