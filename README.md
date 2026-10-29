@@ -79,9 +79,9 @@ and is part of looking like the original client.
 |---|-------|------|
 | p13 | stub `window.TradingView.createGoProDialog` in the page's main world ("Analyze markets in TradingView Desktop" / `manyDesktopWindows` upsell) | both |
 | p14 | DOM-level killer for site-internal paywall/gopro dialogs ("Join for free" gate and the signed-in desktop upsell — both render via `openWall`), un-locks body scroll | both |
-| p15 | hide the "Invite friends. Earn cash" bottom-left banner (best-effort, matched by copy) | both |
+| p15 | hide and dismiss the "Invite friends. Earn cash" bottom-left banner (an ad iframe in the `charting-ad` toast group) | both |
 | p19 | CSS hides gopro dialogs from first paint; killer also clicks the wall's close button | both |
-| p18 | streamer watchdog: `close()` a data socket silent for 15s so the site reconnects; reload is a last resort (120s grace, exponential backoff, max 5) | both |
+| p18 | streamer watchdog: `close()` a data socket silent for 15s so the site reconnects; reload is a last resort (120s grace, exponential backoff, max 5); stands down on plan connection-limit cuts | both |
 
 **Not included:** the canvas-painted TradingView logo watermark at the
 bottom-left of the chart cannot be removed. The drawing call
@@ -116,6 +116,17 @@ throttling for web-tab windows when a server-side feature flag
 (`tvd_background_throttling`) says so; p16 forces it off unconditionally and
 adds the `disable-backgrounding-occluded-windows` switch, so backgrounded or
 fully covered windows keep their timers and render loop alive.
+
+### Multiple tabs on a Basic plan
+
+A Basic plan allows **2** simultaneous data connections. With more chart
+tabs open, the server closes the extra connection ("We've closed this
+connection ... exceeded your plan's limits") and the site shows the
+multi-tab upsell in the other tabs. That is a server-side limit and is not
+bypassed: the connection-limit notice stays visible (with the site's
+"Restore connection" button), p18 does not reload background tabs around
+it, and only the tab you are looking at takes the connection back (one
+reload, at most every 30s) — cutting another tab instead. Keep at most 2 chart tabs open for all of them to stay live.
 
 ## Requirements
 

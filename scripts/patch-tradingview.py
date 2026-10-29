@@ -237,9 +237,16 @@ PRELOAD_PATCHES = [
     #      is never consulted), and the dialog has no close button while
     #      body gets i-no-scroll. Kill it at the DOM level: hide the
     #      top-level overlay of any dialog carrying a gopro- css-module
-    #      class (or the known upsell copy), un-lock body scroll.
-    # p15: hide the "Invite friends. Earn cash" bottom-left banner
-    #      (best-effort, matched by copy).
+    #      class (or the known upsell copy), un-lock body scroll. Only the
+    #      dialog's own wrapper is hidden: #overlap-manager-root hosts every
+    #      dialog, menu and toast. The server's connection-limit notice
+    #      ("We've closed this connection", Basic = 2 connections) is never
+    #      hidden: it is the only explanation of a cut and carries the
+    #      site's "Restore connection" button.
+    # p15: the "Invite friends. Earn cash" bottom-left banner is an ad
+    #      iframe in the charting-ad toast group of #overlap-manager-root
+    #      (its copy is not in the page DOM): hidden by CSS, then dismissed
+    #      through the group's own close button.
     # p18: streamer watchdog. TradingView's servers cut free/anonymous data
     #      streams after a few minutes (observed ~5 min after page load,
     #      signed-in or not, foreground or background): the socket stays
@@ -250,6 +257,12 @@ PRELOAD_PATCHES = [
     #      (healthy ping cadence is 5-10s) close() it so the site's own
     #      reconnect logic rebuilds the stream seamlessly. If no new socket
     #      shows up within 10s, fall back to a rate-limited page reload.
+    #      Plan-limit cuts are left alone: while a connection-limit or
+    #      multi-tab upsell dialog is up, no close/reload happens (reloading
+    #      just steals the connection from another tab, which then gets cut,
+    #      and so on). Only the tab the user is looking at takes the
+    #      connection back: a cut tab reloads when it is (or becomes) the
+    #      visible one, at most once per 30s.
     # p19: instant CSS suppression -- gopro-class dialogs are display:none
     #      from the first paint (no JS latency), and the TradingView chart
     #      watermark is hidden. Complements the JS killers above.
@@ -272,10 +285,12 @@ PRELOAD_PATCHES = [
         b"try{Object.defineProperty(window,'TradingView',{configurable:true,get:function(){return t;},set:function(v){t=s(v);}});}catch(e){}}"
         b"var i=setInterval(function(){try{var v=window.TradingView;if(v&&typeof v.createGoProDialog==='function'&&!v.createGoProDialog.__tvp){v.createGoProDialog=function(){};v.createGoProDialog.__tvp=1;}}catch(e){}},200);"
         b"var TXT=['Join for free','Make every move count','Look first / Then leap','Analyze markets in TradingView Desktop','Upgrade your plan and discover the full power'];"
-        b"try{var __st=document.createElement('style');__st.textContent='div[class*=dialog]:has([class*=gopro]){display:none!important}[class*=watermark]{display:none!important}';document.documentElement.appendChild(__st);}catch(e){}"
-        b"var kill=function(){try{var L=document.querySelectorAll('div[class*=dialog-]');for(var k=0;k<L.length;k++){var g=L[k];var hit=!!g.querySelector('[class*=gopro-]');if(!hit){var tx=g.innerText||'';for(var j=0;j<TXT.length;j++){if(tx.indexOf(TXT[j])>=0){hit=true;break;}}}if(!hit)continue;var top=g;while(top.parentElement&&top.parentElement!==document.body)top=top.parentElement;if(top&&top!==document.body&&top.style.display!=='none'){var cb=top.querySelector('[aria-label*=lose i],[aria-label*=ismiss i],button[class*=lose],[class*=loseButton],[data-name=close]');if(cb){try{cb.click();}catch(e){}}top.style.display='none';try{document.body.classList.remove('i-no-scroll');document.documentElement.classList.remove('i-no-scroll');}catch(e){}try{if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();}catch(e){}}}}catch(e){}};"
+        b"var KEEP='closed this connection';var LIM=[KEEP,'Analyze markets in TradingView Desktop'];"
+        b"var __lim=function(){try{var L=document.querySelectorAll('div[class*=dialog-]');for(var k=0;k<L.length;k++){var tx=L[k].textContent||'';for(var j=0;j<LIM.length;j++){if(tx.indexOf(LIM[j])>=0)return true;}}}catch(e){}return false;};"
+        b"try{var __st=document.createElement('style');__st.textContent='div[class*=dialog]:has([class*=gopro]):not([data-tvp-keep]){display:none!important}[class*=watermark]{display:none!important}[class*=toastGroup-]:has([data-name=toast-group-close-button-charting-ad]),[class*=toast-]:has([class*=adContainer-]){display:none!important}';document.documentElement.appendChild(__st);}catch(e){}"
+        b"var kill=function(){try{var L=document.querySelectorAll('div[class*=dialog-]');for(var k=0;k<L.length;k++){var g=L[k];if((g.textContent||'').indexOf(KEEP)>=0){var kt=g;while(kt.parentElement&&kt.parentElement!==document.body&&kt.parentElement.id!=='overlap-manager-root')kt=kt.parentElement;if(kt.id!=='overlap-manager-root'){kt.setAttribute('data-tvp-keep','1');if(kt.style.display==='none')kt.style.display='';var kd=kt.querySelectorAll('div[class*=dialog]');for(var q=0;q<kd.length;q++)kd[q].setAttribute('data-tvp-keep','1');}continue;}var hit=!!g.querySelector('[class*=gopro-]');if(!hit){var tx=g.innerText||'';for(var j=0;j<TXT.length;j++){if(tx.indexOf(TXT[j])>=0){hit=true;break;}}}if(!hit)continue;var top=g;while(top.parentElement&&top.parentElement!==document.body&&top.parentElement.id!=='overlap-manager-root')top=top.parentElement;if(top&&top!==document.body&&top.id!=='overlap-manager-root'&&top.style.display!=='none'){var cb=top.querySelector('[aria-label*=lose i],[aria-label*=ismiss i],button[class*=lose],[class*=loseButton],[data-name=close]');if(cb){try{cb.click();}catch(e){}}top.style.display='none';try{document.body.classList.remove('i-no-scroll');document.documentElement.classList.remove('i-no-scroll');}catch(e){}try{if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();}catch(e){}}}}catch(e){}};"
         b"try{new MutationObserver(function(){kill();}).observe(document.documentElement,{childList:true,subtree:true});}catch(e){}"
-        b"var killAd=function(){try{var cands=document.querySelectorAll('button,a');for(var k=0;k<cands.length;k++){if((cands[k].textContent||'').indexOf('Get my link')<0)continue;var top=cands[k];while(top.parentElement&&top.parentElement!==document.body&&top.parentElement!==document.documentElement)top=top.parentElement;if(top&&top!==document.body&&top.tagName!=='HTML'&&top.tagName!=='BODY'&&top.style.display!=='none'){top.style.display='none';}}}catch(e){}};"
+        b"var killAd=function(){try{var cb=document.querySelectorAll('[data-name=toast-group-close-button-charting-ad]');for(var k=0;k<cb.length;k++){try{cb[k].click();}catch(e){}}}catch(e){}};"
         b"setInterval(killAd,1000);killAd();"
         b"setInterval(kill,500);kill();"
         b"var __oWS=window.WebSocket;var __tv=[];var __tvN=0;var __tvMax=Date.now();"
@@ -285,6 +300,7 @@ PRELOAD_PATCHES = [
         b"for(i=0;i<__tv.length;i++){r=__tv[i];if(!r.closed&&(r.ws.readyState===0||r.ws.readyState===1))live.push(r);}"
         b"if(__tvRlTimer&&__tvN>__tvRlN){clearTimeout(__tvRlTimer);__tvRlTimer=0;__tvRlBusy=false;}"
         b"window.__tvpDbg={live:live.length,tvN:__tvN,maxAge:Math.round(now-__tvMax),rlB:__tvRlBusy};"
+        b"if(__lim()){__tvPend=0;window.__tvpDbg.lim=true;if(__tvRlTimer){clearTimeout(__tvRlTimer);__tvRlTimer=0;__tvRlBusy=false;}__tvTake();return;}"
         b"if(live.length>0){for(i=0;i<live.length;i++){r=live[i];if(now-r.last>15000){try{r.ws.close();}catch(e){}r.closed=true;__tvPend=now;__tvPendN=__tvN;}}"
         b"if(__tvN>__tvPendN)__tvPend=0;"
         b"if(__tvPend&&__tvN===__tvPendN&&now-__tvPend>120000){__tvPend=0;__tvForceReload();}}"
@@ -296,6 +312,8 @@ PRELOAD_PATCHES = [
         b"try{sessionStorage.setItem('__tvp_rl',String(n+1));}catch(e){}"
         b"var d=[10000,30000,90000,300000,900000][n]||900000;"
         b"__tvRlTimer=setTimeout(function(){location.reload();},d);};"
+        b"var __tvTake=function(){try{if(document.visibilityState!=='visible'||!__lim())return;for(var i=0;i<__tv.length;i++){var r=__tv[i];if(!r.closed&&r.ws.readyState===1&&Date.now()-r.last<15000)return;}var t=0;try{t=parseInt(sessionStorage.getItem('__tvp_take')||'0',10)||0;}catch(e){}if(Date.now()-t<30000)return;try{sessionStorage.setItem('__tvp_take',String(Date.now()));}catch(e){}location.reload();}catch(e){}};"
+        b"document.addEventListener('visibilitychange',__tvTake);"
         b'}catch(e){}})()")'
         b"}catch(_e){}})()",
     ),
