@@ -1,6 +1,9 @@
 # Local build output and analysis artifacts — never publish TradingView binaries
 targets/
 
+# Local agent tooling config (machine-specific absolute paths)
+opencode.json
+
 .DS_Store
 *.asar.tmp
 __pycache__/
